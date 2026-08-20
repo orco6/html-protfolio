@@ -1,13 +1,20 @@
 /**
- * Seeds the initial people and a realistic month of demo data.
+ * Seeds the initial people, and optionally a realistic month of demo data.
  *
- *   node scripts/seed.mjs            # insert what is missing, keep existing rows
- *   node scripts/seed.mjs --fresh    # wipe report_entries + non-seed profiles first
+ *   node scripts/seed.mjs                          # development: people + demo rows
+ *   node scripts/seed.mjs --fresh                  # wipe first, then reseed
+ *   node scripts/seed.mjs --no-demo                # people only, no report rows
+ *   node scripts/seed.mjs --random-passwords       # one strong password each,
+ *                                                  # printed once and not stored
  *
- * Runs as the database owner (postgres) because it has to create the very first
- * administrator, which no RLS policy would otherwise allow.
+ * Production bootstrap uses `--no-demo --random-passwords`; scripts/deploy-supabase.sh
+ * calls it that way.
+ *
+ * Runs as the database owner because creating the very first administrator is
+ * precisely the step no RLS policy can authorise.
  */
 
+import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
@@ -32,6 +39,17 @@ loadEnv('.env.local');
 
 const DEMO_PASSWORD = process.env.SEED_PASSWORD ?? 'Demo!2345';
 const fresh = process.argv.includes('--fresh');
+const noDemo = process.argv.includes('--no-demo');
+const randomPasswords = process.argv.includes('--random-passwords');
+
+/** Human-typeable but high-entropy: ~77 bits over an unambiguous alphabet. */
+function generatePassword() {
+  const alphabet = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const bytes = randomBytes(15);
+  let out = '';
+  for (const byte of bytes) out += alphabet[byte % alphabet.length];
+  return `${out.slice(0, 5)}-${out.slice(5, 10)}-${out.slice(10)}`;
+}
 
 if (!process.env.OWNER_DATABASE_URL) {
   console.error('Missing OWNER_DATABASE_URL. Run ./scripts/setup-db.sh first.');
@@ -119,15 +137,21 @@ async function upsertProfile(client, { fullName, email, role, passwordHash }) {
   return rows[0];
 }
 
+const ARGON = { type: argon2.argon2id, memoryCost: 19_456, timeCost: 2, parallelism: 1 };
+
 async function main() {
   const client = await pool.connect();
   try {
-    const passwordHash = await argon2.hash(DEMO_PASSWORD, {
-      type: argon2.argon2id,
-      memoryCost: 19_456,
-      timeCost: 2,
-      parallelism: 1,
-    });
+    const sharedHash = randomPasswords ? null : await argon2.hash(DEMO_PASSWORD, ARGON);
+    /** email → plaintext, printed once at the end when generating passwords. */
+    const issued = new Map();
+
+    async function hashFor(email) {
+      if (!randomPasswords) return sharedHash;
+      const plain = generatePassword();
+      issued.set(email, plain);
+      return argon2.hash(plain, ARGON);
+    }
 
     if (fresh) {
       console.log('==> clearing existing report data, sessions and non-seed profiles');
@@ -141,19 +165,23 @@ async function main() {
     const byName = new Map();
 
     for (const admin of ADMINS) {
+      const passwordHash = await hashFor(admin.email);
       const row = await upsertProfile(client, { ...admin, role: 'admin', passwordHash });
       byName.set(admin.fullName, row.id);
     }
     console.log(`==> ${ADMINS.length} administrators ready`);
 
     for (const agent of AGENTS) {
+      const passwordHash = await hashFor(agent.email);
       const row = await upsertProfile(client, { ...agent, role: 'agent', passwordHash });
       byName.set(agent.fullName, row.id);
     }
     console.log(`==> ${AGENTS.length} agents ready`);
 
     const { rows: existing } = await client.query('select count(*)::int as n from public.report_entries');
-    if (existing[0].n > 0 && !fresh) {
+    if (noDemo) {
+      console.log('==> --no-demo: no report rows inserted');
+    } else if (existing[0].n > 0 && !fresh) {
       console.log(`==> report_entries already has ${existing[0].n} rows; skipping demo data`);
     } else {
       for (const [agentName, period, address, amount, hasInvoice, invoice] of DEMO_ENTRIES) {
@@ -167,10 +195,24 @@ async function main() {
       console.log(`==> inserted ${DEMO_ENTRIES.length} demo report rows`);
     }
 
-    console.log('\nSeed complete. Sign-in details:');
-    console.log(`  password for every seeded account: ${DEMO_PASSWORD}`);
-    console.log(`  administrators: ${ADMINS.map((a) => a.email).join(', ')}`);
-    console.log(`  agents:         ${AGENTS.map((a) => a.email).join(', ')}`);
+    if (randomPasswords) {
+      const width = Math.max(...issued.keys().map((e) => e.length));
+      console.log('\n  Initial sign-in details — shown once, not stored anywhere.');
+      console.log('  Give each person only their own line, then keep this in a password manager.');
+      console.log('  To rotate one later: node scripts/set-password.mjs <email>\n');
+      for (const person of [...ADMINS, ...AGENTS]) {
+        const role = ADMINS.includes(person) ? 'מנהל' : 'סוכן';
+        console.log(
+          `    ${person.email.padEnd(width)}  ${issued.get(person.email)}   ${role}  ${person.fullName}`,
+        );
+      }
+      console.log('');
+    } else {
+      console.log('\nSeed complete. Sign-in details:');
+      console.log(`  password for every seeded account: ${DEMO_PASSWORD}`);
+      console.log(`  administrators: ${ADMINS.map((a) => a.email).join(', ')}`);
+      console.log(`  agents:         ${AGENTS.map((a) => a.email).join(', ')}`);
+    }
   } finally {
     client.release();
     await pool.end();

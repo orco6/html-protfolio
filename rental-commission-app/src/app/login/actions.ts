@@ -24,13 +24,12 @@ export async function loginAction(_prev: LoginState, formData: FormData): Promis
   const result = await login(parsed.data.email, parsed.data.password, userAgent);
 
   if (!result.ok) {
-    return {
-      email,
-      error:
-        result.reason === 'inactive'
-          ? 'המשתמש אינו פעיל. יש לפנות למנהל המערכת.'
-          : 'שם משתמש או סיסמה שגויים.',
-    };
+    const messages = {
+      inactive: 'המשתמש אינו פעיל. יש לפנות למנהל המערכת.',
+      throttled: 'בוצעו יותר מדי ניסיונות כניסה. יש להמתין 15 דקות ולנסות שוב.',
+      invalid_credentials: 'שם משתמש או סיסמה שגויים.',
+    } as const;
+    return { email, error: messages[result.reason] };
   }
 
   redirect(result.user.role === 'admin' ? '/admin' : '/report');

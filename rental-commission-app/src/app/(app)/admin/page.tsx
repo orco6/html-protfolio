@@ -14,7 +14,8 @@ import { DuplicatePanel } from '@/components/duplicate-panel';
 export const metadata: Metadata = { title: 'סקירה חודשית' };
 export const dynamic = 'force-dynamic';
 
-const TH = 'px-4 py-2.5 text-start text-[12px] font-semibold uppercase tracking-wide text-ink-muted';
+const TH =
+  'px-4 py-2.5 text-start text-[12px] font-semibold uppercase tracking-wide text-ink-muted';
 const TD = 'px-4 py-3 align-middle text-[14px]';
 
 export default async function AdminOverviewPage({
@@ -105,12 +106,24 @@ export default async function AdminOverviewPage({
               <table className="w-full min-w-[780px] border-collapse">
                 <thead className="border-b border-line bg-surface-sunken">
                   <tr>
-                    <th scope="col" className={TH}>סוכן</th>
-                    <th scope="col" className={cx(TH, 'w-28')}>נכסים</th>
-                    <th scope="col" className={cx(TH, 'w-32')}>עם חשבונית</th>
-                    <th scope="col" className={cx(TH, 'w-36')}>סך שנגבה</th>
-                    <th scope="col" className={cx(TH, 'w-36')}>ללא מע״מ</th>
-                    <th scope="col" className={cx(TH, 'w-36')}>עמלה לתשלום</th>
+                    <th scope="col" className={TH}>
+                      סוכן
+                    </th>
+                    <th scope="col" className={cx(TH, 'w-28')}>
+                      נכסים
+                    </th>
+                    <th scope="col" className={cx(TH, 'w-32')}>
+                      עם חשבונית
+                    </th>
+                    <th scope="col" className={cx(TH, 'w-36')}>
+                      סך שנגבה
+                    </th>
+                    <th scope="col" className={cx(TH, 'w-36')}>
+                      ללא מע״מ
+                    </th>
+                    <th scope="col" className={cx(TH, 'w-36')}>
+                      עמלה לתשלום
+                    </th>
                     <th scope="col" className={cx(TH, 'w-24 no-print')}>
                       <span className="sr-only">פעולות</span>
                     </th>
@@ -121,16 +134,21 @@ export default async function AdminOverviewPage({
                     <tr key={agent.agentId} className="transition-colors hover:bg-surface-sunken">
                       <td className={TD}>
                         <Link
+                          prefetch={false}
                           href={`/admin/agents/${agent.agentId}?year=${period.year}&month=${period.month}`}
                           className="font-medium text-ink hover:text-brand-600 hover:underline"
                         >
                           {agent.agentName}
                         </Link>
                         {!agent.isActive ? (
-                          <Badge tone="neutral" className="ms-2">לא פעיל</Badge>
+                          <Badge tone="neutral" className="ms-2">
+                            לא פעיל
+                          </Badge>
                         ) : null}
                         {agent.totals.entryCount === 0 ? (
-                          <Badge tone="pending" className="ms-2">טרם דיווח</Badge>
+                          <Badge tone="pending" className="ms-2">
+                            טרם דיווח
+                          </Badge>
                         ) : null}
                       </td>
                       <td className={cx(TD, 'tnum')}>{agent.totals.entryCount}</td>
@@ -143,7 +161,9 @@ export default async function AdminOverviewPage({
                         ) : null}
                       </td>
                       <td className={cx(TD, 'tnum')}>{formatAmount(agent.totals.grossTotal)}</td>
-                      <td className={cx(TD, 'tnum text-ink-soft')}>{formatAmount(agent.totals.netTotal)}</td>
+                      <td className={cx(TD, 'tnum text-ink-soft')}>
+                        {formatAmount(agent.totals.netTotal)}
+                      </td>
                       <td
                         className={cx(
                           TD,
@@ -155,6 +175,7 @@ export default async function AdminOverviewPage({
                       </td>
                       <td className={cx(TD, 'no-print')}>
                         <Link
+                          prefetch={false}
                           href={`/admin/agents/${agent.agentId}?year=${period.year}&month=${period.month}`}
                           className="inline-flex items-center gap-1 text-[13px] font-medium text-brand-600 hover:text-brand-700"
                         >
@@ -168,10 +189,18 @@ export default async function AdminOverviewPage({
                 <tfoot className="border-t-2 border-line-strong bg-surface-sunken">
                   <tr>
                     <td className={cx(TD, 'font-semibold')}>סה״כ</td>
-                    <td className={cx(TD, 'tnum font-semibold')}>{overview.grandTotals.entryCount}</td>
-                    <td className={cx(TD, 'tnum font-semibold')}>{overview.grandTotals.invoicedCount}</td>
-                    <td className={cx(TD, 'tnum font-semibold')}>{formatAmount(overview.grandTotals.grossTotal)}</td>
-                    <td className={cx(TD, 'tnum font-semibold')}>{formatAmount(overview.grandTotals.netTotal)}</td>
+                    <td className={cx(TD, 'tnum font-semibold')}>
+                      {overview.grandTotals.entryCount}
+                    </td>
+                    <td className={cx(TD, 'tnum font-semibold')}>
+                      {overview.grandTotals.invoicedCount}
+                    </td>
+                    <td className={cx(TD, 'tnum font-semibold')}>
+                      {formatAmount(overview.grandTotals.grossTotal)}
+                    </td>
+                    <td className={cx(TD, 'tnum font-semibold')}>
+                      {formatAmount(overview.grandTotals.netTotal)}
+                    </td>
                     <td className={cx(TD, 'tnum font-bold text-payable-700')}>
                       {formatAmount(overview.grandTotals.payableTotal)}
                     </td>
@@ -186,6 +215,7 @@ export default async function AdminOverviewPage({
               {overview.agents.map((agent) => (
                 <li key={agent.agentId}>
                   <Link
+                    prefetch={false}
                     href={`/admin/agents/${agent.agentId}?year=${period.year}&month=${period.month}`}
                     className="flex items-center gap-3 px-4 py-3.5 transition-colors active:bg-surface-sunken"
                   >
@@ -208,7 +238,7 @@ export default async function AdminOverviewPage({
                       >
                         {formatILS(agent.totals.payableTotal)}
                       </p>
-                      <p className="text-[11.5px] text-ink-faint">לתשלום</p>
+                      <p className="text-[11.5px] text-ink-muted">לתשלום</p>
                     </div>
                     <NextIcon className="size-4 shrink-0 text-ink-faint" />
                   </Link>

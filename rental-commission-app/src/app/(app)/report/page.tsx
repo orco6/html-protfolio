@@ -58,7 +58,7 @@ export default async function AgentReportPage({
 
       <div className="card flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-5 no-print">
         <MonthPicker period={period} />
-        <p className="text-[12.5px] text-ink-faint">
+        <p className="text-[12.5px] text-ink-muted">
           הנתונים נשמרים בשרת ונשארים זמינים בכל כניסה.
         </p>
       </div>

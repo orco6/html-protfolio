@@ -175,7 +175,7 @@ export function AppShell({
         {children}
       </main>
 
-      <footer className="no-print border-t border-line py-5 text-center text-[12px] text-ink-faint">
+      <footer className="no-print border-t border-line py-5 text-center text-[12px] text-ink-muted">
         מערכת ניהול עמלות סוכני השכרה
       </footer>
     </div>

@@ -103,6 +103,7 @@ export default async function AdminAgentDetailPage({
               return (
                 <Link
                   key={`${p.year}-${p.month}`}
+                  prefetch={false}
                   href={`/admin/agents/${agent.id}?year=${p.year}&month=${p.month}`}
                   className={cx(
                     'tnum rounded-md border px-2 py-0.5 text-[12px] font-medium transition-colors',

@@ -18,10 +18,13 @@
   --color-line: #e4e8ed;
   --color-line-strong: #ccd4de;
 
-  --color-ink: #0e1620;
-  --color-ink-soft: #3d4b5c;
-  --color-ink-muted: #64748b;
-  --color-ink-faint: #94a3b8;
+  /* Every step that carries information clears 4.5:1 on --color-surface.
+     `ink-faint` is reserved for decoration — row numbers, em-dashes,
+     placeholders — and is never the only way a fact is communicated. */
+  --color-ink: #0e1620;        /* 17.4:1 */
+  --color-ink-soft: #3d4b5c;   /*  8.9:1 */
+  --color-ink-muted: #5a6779;  /*  5.6:1 */
+  --color-ink-faint: #7c8899;  /*  3.7:1 — decorative only */
 
   /* brand — deep, unsaturated blue. interactive elements only */
   --color-brand-50: #eef4fa;
@@ -112,13 +115,18 @@
    ============================================================================ */
 
 @utility tnum {
-  /* Tabular, LTR digits inside an RTL document: currency columns must align
-     and must never be reordered by the bidi algorithm. */
+  /* Tabular, LTR digits inside an RTL document.
+     `direction: ltr` + `unicode-bidi: isolate` keep a run like "₪1,423.73" or
+     "−₪1,639.91" intact, since the bidi algorithm would otherwise be free to
+     move the sign to the other end.
+     `text-align: right` then puts the figure on the right edge of its box —
+     which in a right-to-left table is the *start* edge, directly beneath the
+     column heading, and keeps decimal points lined up down the column. */
   font-variant-numeric: tabular-nums;
   font-feature-settings: 'tnum' 1;
   direction: ltr;
   unicode-bidi: isolate;
-  text-align: inherit;
+  text-align: right;
 }
 
 @utility card {

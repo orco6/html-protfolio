@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useActionState, useEffect, useState, useTransition } from 'react';
+import { useActionState, useEffect, useRef, useState, useTransition } from 'react';
 import { useFormStatus } from 'react-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 
@@ -30,12 +30,23 @@ function SubmitButton() {
 
 function NewAgentForm() {
   const [state, formAction] = useActionState<AgentFormState, FormData>(createAgentAction, {});
-  const [formKey, setFormKey] = useState(0);
+  const formRef = useRef<HTMLFormElement>(null);
+  const focusRef = useRef<HTMLInputElement>(null);
 
-  // Clearing the fields after a successful add keeps the form ready for the next one.
+  /**
+   * Clear the fields after a successful add, ready for the next one.
+   *
+   * `form.reset()` rather than remounting the form with a changing `key`:
+   * a remount tears the subtree down, and because the action's own
+   * `revalidatePath` refreshes the route in the same window, the confirmation
+   * could be destroyed before it was ever painted. Resetting leaves every
+   * node — and therefore the action state — in place.
+   */
   useEffect(() => {
-    if (state.ok) setFormKey((k) => k + 1);
-  }, [state.ok]);
+    if (!state.ok) return;
+    formRef.current?.reset();
+    focusRef.current?.focus();
+  }, [state.ok, state.message]);
 
   return (
     <section className="card overflow-hidden">
@@ -46,25 +57,34 @@ function NewAgentForm() {
         </p>
       </div>
 
-      <form key={formKey} action={formAction} className="flex flex-col gap-4 px-4 py-4 sm:px-5" noValidate>
-        {state.error ? (
-          <Callout role="alert" tone="conflict" className="flex items-start gap-2">
-            <AlertIcon className="mt-0.5 size-4 shrink-0" />
-            <span>{state.error}</span>
-          </Callout>
-        ) : null}
-        {state.ok && state.message ? (
-          <Callout role="status" tone="brand" className="flex items-start gap-2">
-            <CheckIcon className="mt-0.5 size-4 shrink-0" />
-            <span>{state.message}</span>
-          </Callout>
-        ) : null}
+      {state.error || (state.ok && state.message) ? (
+        <div className="px-4 pt-4 sm:px-5">
+          {state.error ? (
+            <Callout role="alert" tone="conflict" className="flex items-start gap-2">
+              <AlertIcon className="mt-0.5 size-4 shrink-0" />
+              <span>{state.error}</span>
+            </Callout>
+          ) : (
+            <Callout role="status" tone="brand" className="flex items-start gap-2">
+              <CheckIcon className="mt-0.5 size-4 shrink-0" />
+              <span>{state.message}</span>
+            </Callout>
+          )}
+        </div>
+      ) : null}
 
+      <form
+        ref={formRef}
+        action={formAction}
+        className="flex flex-col gap-4 px-4 py-4 sm:px-5"
+        noValidate
+      >
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
           <Field label="שם מלא" htmlFor="fullName" error={state.fields?.fullName}>
             <Input
               id="fullName"
               name="fullName"
+              ref={focusRef}
               required
               autoComplete="off"
               placeholder="לדוגמה: דנה לוי"
@@ -159,7 +179,8 @@ function ActivationButton({ agent }: { agent: AgentProfile }) {
   );
 }
 
-const TH = 'px-4 py-2.5 text-start text-[12px] font-semibold uppercase tracking-wide text-ink-muted';
+const TH =
+  'px-4 py-2.5 text-start text-[12px] font-semibold uppercase tracking-wide text-ink-muted';
 const TD = 'px-4 py-3 align-middle text-[14px]';
 
 export function AgentsManager({ agents }: { agents: AgentProfile[] }) {
@@ -174,7 +195,8 @@ export function AgentsManager({ agents }: { agents: AgentProfile[] }) {
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-3.5 sm:px-5">
           <h2 className="text-[15px] font-semibold">רשימת הסוכנים</h2>
           <p className="text-[13px] text-ink-muted">
-            <bdi className="tnum">{activeCount}</bdi> פעילים מתוך <bdi className="tnum">{agents.length}</bdi>
+            <bdi className="tnum">{activeCount}</bdi> פעילים מתוך{' '}
+            <bdi className="tnum">{agents.length}</bdi>
           </p>
         </div>
 
@@ -182,10 +204,18 @@ export function AgentsManager({ agents }: { agents: AgentProfile[] }) {
           <table className="w-full min-w-[720px] border-collapse">
             <thead className="border-b border-line bg-surface-sunken">
               <tr>
-                <th scope="col" className={TH}>שם הסוכן</th>
-                <th scope="col" className={TH}>דוא״ל</th>
-                <th scope="col" className={cx(TH, 'w-32')}>סטטוס</th>
-                <th scope="col" className={cx(TH, 'w-36')}>סה״כ דיווחים</th>
+                <th scope="col" className={TH}>
+                  שם הסוכן
+                </th>
+                <th scope="col" className={TH}>
+                  דוא״ל
+                </th>
+                <th scope="col" className={cx(TH, 'w-32')}>
+                  סטטוס
+                </th>
+                <th scope="col" className={cx(TH, 'w-36')}>
+                  סה״כ דיווחים
+                </th>
                 <th scope="col" className={cx(TH, 'w-44')}>
                   <span className="sr-only">פעולות</span>
                 </th>
@@ -200,10 +230,14 @@ export function AgentsManager({ agents }: { agents: AgentProfile[] }) {
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.16 }}
-                    className={cx('transition-colors hover:bg-surface-sunken', !agent.isActive && 'opacity-75')}
+                    className={cx(
+                      'transition-colors hover:bg-surface-sunken',
+                      !agent.isActive && 'opacity-75',
+                    )}
                   >
                     <td className={cx(TD, 'font-medium')}>
                       <Link
+                        prefetch={false}
                         href={`/admin/agents/${agent.id}`}
                         className="text-ink hover:text-brand-600 hover:underline"
                       >
@@ -239,17 +273,25 @@ export function AgentsManager({ agents }: { agents: AgentProfile[] }) {
             <li key={agent.id} className={cx('px-4 py-4', !agent.isActive && 'opacity-75')}>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <Link href={`/admin/agents/${agent.id}`} className="text-[15px] font-medium hover:underline">
+                  <Link
+                    prefetch={false}
+                    href={`/admin/agents/${agent.id}`}
+                    className="text-[15px] font-medium hover:underline"
+                  >
                     {agent.fullName}
                   </Link>
                   <p className="mt-0.5 text-[12.5px] text-ink-muted" dir="ltr">
                     <span className="block text-start">{agent.email}</span>
                   </p>
-                  <p className="mt-1 text-[12px] text-ink-faint">
+                  <p className="mt-1 text-[12px] text-ink-muted">
                     <bdi className="tnum">{agent.entryCount}</bdi> דיווחים בסך הכול
                   </p>
                 </div>
-                {agent.isActive ? <Badge tone="payable">פעיל</Badge> : <Badge tone="neutral">לא פעיל</Badge>}
+                {agent.isActive ? (
+                  <Badge tone="payable">פעיל</Badge>
+                ) : (
+                  <Badge tone="neutral">לא פעיל</Badge>
+                )}
               </div>
               <div className="mt-3">
                 <ActivationButton agent={agent} />
@@ -260,8 +302,8 @@ export function AgentsManager({ agents }: { agents: AgentProfile[] }) {
 
         {agents.length > 0 ? (
           <p className="border-t border-line bg-surface-sunken px-4 py-3 text-[12px] leading-relaxed text-ink-muted sm:px-5">
-            השבתת סוכן חוסמת את הכניסה שלו למערכת ומונעת דיווחים חדשים, אך כל הדיווחים
-            ההיסטוריים נשארים זמינים בדוחות ובסקירה החודשית.
+            השבתת סוכן חוסמת את הכניסה שלו למערכת ומונעת דיווחים חדשים, אך כל הדיווחים ההיסטוריים
+            נשארים זמינים בדוחות ובסקירה החודשית.
           </p>
         ) : null}
       </section>

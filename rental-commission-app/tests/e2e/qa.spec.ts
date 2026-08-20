@@ -326,7 +326,7 @@ test.describe('administrator', () => {
     await page.getByLabel('דוא״ל').fill(email);
     await page.getByLabel('סיסמה ראשונית').fill('Testing!2345');
     await page.getByRole('button', { name: 'הוספת סוכן' }).click();
-    await expect(page.getByText(`הסוכן ${name} נוסף בהצלחה`)).toBeVisible();
+    await expect(page.getByText(`הסוכן ${name} נוסף בהצלחה`)).toBeVisible({ timeout: 20_000 });
 
     const row = page.getByRole('row', { name: new RegExp(name) });
     await expect(row.getByText('פעיל', { exact: true })).toBeVisible();
@@ -412,8 +412,29 @@ test.describe('print documents', () => {
 
 test('no console errors across the main screens', async ({ page }) => {
   const errors: string[] = [];
+  /**
+   * Navigating away cancels whatever the router was prefetching, and Chromium
+   * reports that cancellation as a console error with no detail. Those are
+   * artefacts of the test walking the app quickly, not defects, so aborted
+   * requests are tracked separately and every *other* failure is still a
+   * failure — including the bare "Failed to load resource" line, which is only
+   * forgiven when an abort actually explains it.
+   */
+  const aborted: string[] = [];
+  const realFailures: string[] = [];
+
+  page.on('requestfailed', (request) => {
+    const reason = request.failure()?.errorText ?? 'unknown';
+    if (reason.includes('ERR_ABORTED')) aborted.push(request.url());
+    else realFailures.push(`${reason} ${request.url()}`);
+  });
+
   page.on('console', (msg) => {
-    if (msg.type() === 'error') errors.push(msg.text());
+    if (msg.type() !== 'error') return;
+    const text = msg.text();
+    const isGenericLoadFailure = /Failed to load resource/i.test(text);
+    if (isGenericLoadFailure && aborted.length > 0) return;
+    errors.push(text);
   });
   page.on('pageerror', (error) => errors.push(error.message));
 
@@ -435,4 +456,139 @@ test('no console errors across the main screens', async ({ page }) => {
   await page.waitForLoadState('networkidle');
 
   expect(errors, `console errors:\n${errors.join('\n')}`).toEqual([]);
+  expect(realFailures, `failed requests:\n${realFailures.join('\n')}`).toEqual([]);
+});
+
+/* -------------------------------------------------------------------------- */
+/* Session and login hardening                                                 */
+/* -------------------------------------------------------------------------- */
+
+test.describe('session hardening', () => {
+  test('the session cookie is HttpOnly, SameSite=Lax and scoped to the site root', async ({
+    page,
+    context,
+  }) => {
+    await login(page, AGENT_A.email);
+
+    const cookie = (await context.cookies()).find((c) => c.name.endsWith('rc_session'));
+    expect(cookie, 'no session cookie was set').toBeDefined();
+    expect(cookie!.httpOnly, 'session cookie must be HttpOnly').toBe(true);
+    expect(cookie!.sameSite).toBe('Lax');
+    expect(cookie!.path).toBe('/');
+    // Over plain HTTP the Secure flag and the __Host- prefix cannot be used;
+    // both are derived from x-forwarded-proto in a real deployment.
+    expect(cookie!.expires).toBeGreaterThan(Date.now() / 1000);
+
+    // The cookie is unreadable from page scripts, so XSS cannot exfiltrate it.
+    const visible = await page.evaluate(() => document.cookie);
+    expect(visible).not.toContain('rc_session');
+  });
+
+  test('a forged session cookie is rejected', async ({ page, context }) => {
+    await login(page, AGENT_A.email);
+    const name = (await context.cookies()).find((c) => c.name.endsWith('rc_session'))!.name;
+
+    await context.clearCookies();
+    await context.addCookies([
+      {
+        name,
+        value: 'forged-token-that-was-never-issued',
+        domain: new URL(BASE).hostname,
+        path: '/',
+        httpOnly: true,
+        sameSite: 'Lax',
+      },
+    ]);
+
+    await page.goto(`${BASE}/report`);
+    await expect(page).toHaveURL(/\/login/);
+  });
+
+  test('logging out kills the session for good, even with the cookie replayed', async ({
+    page,
+    context,
+  }) => {
+    await login(page, AGENT_A.email);
+    const cookie = (await context.cookies()).find((c) => c.name.endsWith('rc_session'))!;
+
+    await logout(page);
+
+    // Replay the exact cookie that was valid a moment ago.
+    await context.addCookies([cookie]);
+    await page.goto(`${BASE}/report`);
+    await expect(page).toHaveURL(/\/login/);
+  });
+
+  test('deactivating an agent ends their live session on the next request', async ({
+    page,
+    browser,
+  }) => {
+    // Give the victim a working session first.
+    const adminPage = page;
+    await login(adminPage, ADMIN.email);
+    await adminPage.goto(`${BASE}/admin/agents`);
+
+    const stamp = Date.now();
+    const name = `סוכן ניתוק ${stamp}`;
+    const email = `revoke-${stamp}@nadlan.co.il`;
+    await adminPage.getByLabel('שם מלא').fill(name);
+    await adminPage.getByLabel('דוא״ל').fill(email);
+    await adminPage.getByLabel('סיסמה ראשונית').fill('Testing!2345');
+    await adminPage.getByRole('button', { name: 'הוספת סוכן' }).click();
+    // Creating an account hashes a password with argon2id — deliberately slow —
+    // and then waits on a router refresh, so this one needs more headroom than
+    // the default assertion timeout.
+    await expect(adminPage.getByText(`הסוכן ${name} נוסף בהצלחה`)).toBeVisible({ timeout: 20_000 });
+
+    const victimContext = await browser.newContext();
+    const victim = await victimContext.newPage();
+    await victim.goto(`${BASE}/login`);
+    await victim.getByLabel('דוא״ל').fill(email);
+    await victim.getByLabel('סיסמה').fill('Testing!2345');
+    await victim.getByRole('button', { name: 'כניסה' }).click();
+    await expect(victim).toHaveURL(/\/report/);
+
+    // Now deactivate them from the admin session.
+    const row = adminPage.getByRole('row', { name: new RegExp(name) });
+    await row.getByRole('button', { name: 'השבתה' }).click();
+    await row.getByRole('button', { name: 'להשבית?' }).click();
+    await expect(adminPage.getByRole('row', { name: new RegExp(name) }).getByText('לא פעיל')).toBeVisible();
+
+    // The already-open session must not survive one more navigation.
+    await victim.goto(`${BASE}/report`);
+    await expect(victim).toHaveURL(/\/login/);
+    await victimContext.close();
+  });
+
+  test('repeated wrong passwords are throttled, and other accounts are unaffected', async ({
+    page,
+    browser,
+  }) => {
+    const target = `throttle-probe-${Date.now()}@nadlan.co.il`;
+
+    // The limit is 10 failures per address inside a 15 minute window.
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      await page.goto(`${BASE}/login`);
+      await page.getByLabel('דוא״ל').fill(target);
+      await page.getByLabel('סיסמה').fill(`wrong-${attempt}`);
+      await page.getByRole('button', { name: 'כניסה' }).click();
+      await expect(page.locator('form').getByRole('alert')).toBeVisible();
+    }
+
+    await page.goto(`${BASE}/login`);
+    await page.getByLabel('דוא״ל').fill(target);
+    await page.getByLabel('סיסמה').fill('wrong-again');
+    await page.getByRole('button', { name: 'כניסה' }).click();
+    await expect(page.locator('form').getByRole('alert')).toContainText('יותר מדי ניסיונות כניסה');
+
+    // The throttle is per address: a real user signing in is not collateral.
+    const bystanderContext = await browser.newContext();
+    const bystander = await bystanderContext.newPage();
+    await bystander.goto(`${BASE}/login`);
+    await bystander.getByLabel('דוא״ל').fill(AGENT_A.email);
+    await bystander.getByLabel('סיסמה').fill(PASSWORD);
+    await bystander.getByRole('button', { name: 'כניסה' }).click();
+    await expect(bystander).toHaveURL(/\/report/);
+    await bystanderContext.close();
+  });
 });

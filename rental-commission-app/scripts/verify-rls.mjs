@@ -164,6 +164,94 @@ async function main() {
     true,
   );
 
+  await expectError(
+    'business-data role cannot read the login-attempt log',
+    () => as(a1.id, (c) => c.query('select * from public.login_attempts')),
+    true,
+  );
+
+  // ---------------------------------------------------- month / period tampering
+  await expectError(
+    "agent cannot back-date a row into another agent's report",
+    () =>
+      as(a1.id, (c) =>
+        c.query('update public.report_entries set agent_id = $2, year = 2020 where id = $1', [
+          a1Entries[0].id,
+          a2.id,
+        ]),
+      ),
+    true,
+  );
+
+  await as(a1.id, async (c) => {
+    // Moving one's own row between months is legitimate; it must stay one's own.
+    const { rows } = await c.query(
+      'update public.report_entries set year = year where id = $1 returning agent_id',
+      [a1Entries[0].id],
+    );
+    check(
+      'an agent editing their own row keeps ownership',
+      rows.length === 1 && rows[0].agent_id === a1.id,
+    );
+  });
+
+  await expectError(
+    'an invalid month is rejected by a database constraint, not just the form',
+    () =>
+      as(a1.id, (c) =>
+        c.query(
+          `insert into public.report_entries (agent_id, year, month, property_address, amount_collected, has_invoice)
+           values ($1, 2026, 13, 'bad month', 100, false)`,
+          [a1.id],
+        ),
+      ),
+    true,
+  );
+
+  await expectError(
+    'a negative amount is rejected by a database constraint',
+    () =>
+      as(a1.id, (c) =>
+        c.query(
+          `insert into public.report_entries (agent_id, year, month, property_address, amount_collected, has_invoice)
+           values ($1, 2026, 5, 'negative', -100, false)`,
+          [a1.id],
+        ),
+      ),
+    true,
+  );
+
+  await expectError(
+    'an invoice number without an invoice is rejected by a database constraint',
+    () =>
+      as(a1.id, (c) =>
+        c.query(
+          `insert into public.report_entries
+             (agent_id, year, month, property_address, amount_collected, has_invoice, invoice_number)
+           values ($1, 2026, 5, 'no invoice flag', 100, false, '123')`,
+          [a1.id],
+        ),
+      ),
+    true,
+  );
+
+  // ------------------------------------------------------------- SQL injection
+  // Values always travel as bound parameters, so quotes are data, never syntax.
+  await as(a1.id, async (c) => {
+    const hostile = "'; drop table public.report_entries; --";
+    const { rows } = await c.query(
+      `insert into public.report_entries
+         (agent_id, year, month, property_address, amount_collected, has_invoice)
+       values ($1, 2099, 1, $2, 1, false)
+       returning property_address`,
+      [a1.id, hostile],
+    );
+    check('a hostile string is stored verbatim as data', rows[0].property_address === hostile);
+
+    const { rows: still } = await c.query('select count(*)::int as n from public.report_entries');
+    check('the table still exists after the injection attempt', still[0].n > 0);
+  });
+
   // ------------------------------------------------------------- no identity
   const anon = await client.connect();
   try {
@@ -181,6 +269,36 @@ async function main() {
     const { rows: profiles } = await c.query('select id from public.profiles');
     check('admin sees every profile', profiles.length === people.length);
   });
+
+  // ---------------------------------------------------- deleted-row semantics
+  await as(a1.id, async (c) => {
+    const { rows: created } = await c.query(
+      `insert into public.report_entries
+         (agent_id, year, month, property_address, amount_collected, has_invoice)
+       values ($1, 2099, 2, 'deletion probe', 500, false)
+       returning id`,
+      [a1.id],
+    );
+    const probeId = created[0].id;
+
+    const { rowCount: gone } = await c.query('delete from public.report_entries where id = $1', [
+      probeId,
+    ]);
+    check('an agent can delete exactly one of their own rows', gone === 1);
+
+    const { rowCount: again } = await c.query('delete from public.report_entries where id = $1', [
+      probeId,
+    ]);
+    check('deleting the same row twice is a no-op, not an error', again === 0);
+  });
+
+  // A profile must never be removable through the application's own role, so a
+  // month of history cannot vanish with the agent who filed it.
+  await expectError(
+    'no role in the request path can delete a profile',
+    () => as(admin.id, (c) => c.query('delete from public.profiles where id = $1', [a2.id])),
+    true,
+  );
 
   // ------------------------------------------------------------- auth role
   await expectError(

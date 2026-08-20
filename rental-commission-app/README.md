@@ -48,8 +48,11 @@ The seed deliberately plants the collisions the duplicate detector must catch:
 | `npm run e2e` | Playwright browser suite against a running server |
 | `npm run db:setup` / `npm run db:reset` | provision / rebuild the database |
 | `npm run seed` / `npm run seed:fresh` | seed data (`:fresh` wipes first) |
-| `node scripts/verify-rls.mjs` | asserts the RLS policies directly against PostgreSQL |
-| `node scripts/qa-shots.mjs` | drives a real browser and writes `qa-screenshots/` |
+| `npm run seed:production` | people only, one generated password each, printed once |
+| `npm run verify:db` | asserts the RLS policies directly against PostgreSQL |
+| `npm run qa:shots` | drives a real browser and writes `qa-screenshots/` |
+| `node scripts/set-password.mjs <email>` | rotate one password and revoke that account's sessions |
+| `./scripts/deploy-supabase.sh "<uri>"` | provision a production database end to end |
 
 ---
 
@@ -92,7 +95,9 @@ db/migrations/                schema, then RLS policies and grants
 ```
 
 Next.js 15 App Router · React 19 · TypeScript · Tailwind CSS v4 ·
-PostgreSQL 16 · Motion (microinteractions) · Playwright (browser QA).
+PostgreSQL 16 (Supabase in production) · Motion (microinteractions) ·
+Playwright (browser QA). Deploys to Vercel — see
+[docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md).
 
 Mutations go through server actions only; there is no public REST surface to
 probe.
@@ -109,7 +114,14 @@ Authorisation lives in the database, not in application code.
 | --- | --- | --- |
 | `app_owner` | migrations and seeding only | everything (`BYPASSRLS`) |
 | `app_client` | every business query | `report_entries`, `profiles` — **RLS forced** |
-| `app_auth` | login / logout / session lookup | credential columns + `sessions`; **no grant at all** on `report_entries` |
+| `app_auth` | login / logout / session lookup | credential columns, `sessions`, `login_attempts`; **no grant at all** on `report_entries` |
+
+On Supabase the migrations additionally strip `anon`, `authenticated` and
+`service_role` of every privilege in `public`, so the tables have no PostgREST
+surface at all — the application is the only way in. `003_hardening.sql` then
+*asserts* the posture (RLS forced, no role can bypass it, neither application
+role holds a privilege it must not) and fails the migration if any of it is
+untrue.
 
 **How identity reaches a policy.** `withUser(userId, …)` opens a transaction and
 sets `app.user_id` with `set_local`, so a pooled connection can never leak one
@@ -133,12 +145,23 @@ node scripts/verify-rls.mjs
   …
 ```
 
-**Sessions.** Opaque 32-byte tokens in an `httpOnly`, `sameSite=lax` cookie
-(`secure` in production). Only an HMAC of the token is stored, keyed by
-`SESSION_SECRET`, so a dump of the `sessions` table cannot be replayed.
-Passwords are argon2id. Failed logins run a decoy verification so response
-timing does not reveal whether an address exists. Deactivating an agent revokes
-their sessions immediately and locks them out on the next request.
+**Sessions.** Opaque 32-byte tokens in an `httpOnly`, `sameSite=lax` cookie.
+Over HTTPS it becomes `__Host-rc_session` — a name browsers only accept when
+the cookie is Secure, `Path=/` and has no `Domain`, so no sibling subdomain can
+plant a session. `Secure` is derived from `x-forwarded-proto`, which is what a
+reverse proxy actually sets. Only an HMAC of the token is stored, keyed by
+`SESSION_SECRET`, so a dump of the `sessions` table cannot be replayed. Sessions
+expire absolutely after 14 days and after 7 days idle; login always mints a
+fresh token, so a session identifier chosen by someone else can never be
+adopted.
+
+**Passwords and login.** argon2id. Failed logins run a decoy verification so
+response timing does not reveal whether an address exists, and attempts are
+counted in the database — 10 failures per address (60 per source address)
+inside a 15-minute window locks further attempts. The counter is shared across
+instances, so it survives the serverless cold starts that defeat an in-process
+limiter. Deactivating an agent revokes their sessions immediately and locks
+them out on their very next request.
 
 **Agent privacy in duplicate detection.** The agent screen is fed only that
 agent's own rows — RLS makes anything else impossible — so a cross-agent
@@ -192,31 +215,35 @@ and signature lines. The on-screen bar above them is `no-print`.
 
 - **56 unit tests** — the commission rule against hand-checked figures, money
   parsing and rounding, duplicate normalisation, period arithmetic, validation.
-- **24 Playwright tests** in a real Chromium — authentication, role separation
+- **29 Playwright tests** in a real Chromium — authentication, role separation
   (including direct-URL probing of another agent's pages), the full CRUD and
   persistence loop across a fresh browser session, duplicate warnings and their
   privacy boundary, month history, agent management with activation, the print
-  documents, and a console-error sweep.
-- **23 database assertions** in `verify-rls.mjs`, run as the application's own
-  least-privilege role.
+  documents, a console-error sweep, and session hardening: cookie flags, a
+  forged cookie, a replayed cookie after logout, deactivation killing a live
+  session, and the login throttle.
+- **35 database assertions** in `verify-rls.mjs`, run as the application's own
+  least-privilege role — isolation, privilege escalation, month and agent-id
+  tampering, constraint enforcement, injection, and delete semantics.
+- **Exploratory browser QA** via Playwright MCP, which is committed in
+  `.mcp.json` and attaches automatically: see
+  [docs/QA-PLAYWRIGHT-MCP.md](./docs/QA-PLAYWRIGHT-MCP.md).
 - **Visual QA** via `scripts/qa-shots.mjs`: every screen at 1440 / 834 / 390 px
   plus A4 print emulation.
 
 ---
 
-## Deploying elsewhere
+## Deploying
 
-The schema is plain PostgreSQL and runs unmodified on Supabase — the identity
-helper already falls back to the `request.jwt.claim.sub` claim, so the same
-policies work with Supabase Auth. To move there: run
-`db/migrations/*.sql` against the project, point `DATABASE_URL` /
-`AUTH_DATABASE_URL` at it, and keep the service-role key server-side only.
+Supabase for the database, Vercel for the app. One command provisions the
+database, applies the migrations, verifies the security posture and prints the
+environment variables ready to paste:
 
-Required environment variables (written into `.env.local` by `db:setup`):
-
+```bash
+./scripts/deploy-supabase.sh "postgresql://postgres:...@db.xxxx.supabase.co:5432/postgres"
 ```
-DATABASE_URL        # app_client — business data, RLS forced
-AUTH_DATABASE_URL   # app_auth   — credentials and sessions only
-OWNER_DATABASE_URL  # migrations and seeding only, never imported by the app
-SESSION_SECRET      # keys the session-token HMAC
-```
+
+Full instructions, including the two steps that need your own accounts, are in
+[docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md). Every variable is documented in
+[.env.example](./.env.example); there is no `NEXT_PUBLIC_*` value in this
+project, so no secret can reach the browser.

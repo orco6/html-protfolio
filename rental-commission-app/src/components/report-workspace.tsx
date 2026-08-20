@@ -66,7 +66,10 @@ export function ReportWorkspace({
     [entries, agentNames],
   );
 
-  const handleChange = useCallback((next: ClientEntry[]) => setEntries(next), []);
+  const handleChange = useCallback(
+    (updater: (current: ClientEntry[]) => ClientEntry[]) => setEntries(updater),
+    [],
+  );
 
   return (
     <>

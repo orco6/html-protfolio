@@ -33,7 +33,8 @@ export function MonthPicker({ period, className }: { period: Period; className?:
 
   const atCurrentMonth = periodsEqual(period, currentPeriod());
   const selectClass =
-    'h-10 rounded-lg border border-line-strong bg-surface px-3 text-[14px] font-medium text-ink ' +
+    'h-11 cursor-pointer rounded-lg border border-line-strong bg-surface px-3 ' +
+    'text-[16px] font-medium text-ink md:h-10 md:text-[14px] ' +
     'transition-colors hover:border-ink-faint focus:border-brand-500 focus:outline-none ' +
     'focus:ring-2 focus:ring-brand-500/25';
 
@@ -48,7 +49,7 @@ export function MonthPicker({ period, className }: { period: Period; className?:
         size="sm"
         aria-label="חודש קודם"
         title="חודש קודם"
-        className="size-10 p-0"
+        className="size-11 p-0 md:size-10"
         onClick={() => goTo(shiftPeriod(period, -1))}
       >
         <PrevIcon className="size-[18px]" />
@@ -91,7 +92,7 @@ export function MonthPicker({ period, className }: { period: Period; className?:
         size="sm"
         aria-label="חודש הבא"
         title="חודש הבא"
-        className="size-10 p-0"
+        className="size-11 p-0 md:size-10"
         onClick={() => goTo(shiftPeriod(period, 1))}
       >
         <NextIcon className="size-[18px]" />

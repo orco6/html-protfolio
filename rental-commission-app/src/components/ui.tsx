@@ -12,7 +12,7 @@ type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
 type ButtonSize = 'sm' | 'md';
 
 const BUTTON_BASE =
-  'inline-flex items-center justify-center gap-2 rounded-lg font-medium ' +
+  'inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg font-medium ' +
   'transition-[background-color,border-color,color,box-shadow] duration-150 ' +
   'disabled:cursor-not-allowed disabled:opacity-55 select-none whitespace-nowrap';
 
@@ -30,7 +30,8 @@ const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
 };
 
 const BUTTON_SIZES: Record<ButtonSize, string> = {
-  sm: 'h-9 px-3 text-[13px]',
+  // 44px on touch, 36px from md up where a mouse makes the density worthwhile.
+  sm: 'h-11 px-3.5 text-[14px] md:h-9 md:px-3 md:text-[13px]',
   md: 'h-11 px-4 text-[15px]',
 };
 
@@ -58,10 +59,12 @@ export function linkButtonClass(variant: ButtonVariant = 'secondary', size: Butt
 /* -------------------------------------------------------------------------- */
 
 export const INPUT_CLASS =
-  'w-full rounded-lg border border-line-strong bg-surface px-3 text-[15px] text-ink ' +
+  // 16px on small screens: anything smaller makes iOS Safari zoom the page on
+  // focus, which is ruinous for a form people fill in twenty times in a row.
+  'w-full rounded-lg border border-line-strong bg-surface px-3 text-[16px] md:text-[15px] text-ink ' +
   'placeholder:text-ink-faint transition-colors duration-150 ' +
   'hover:border-ink-faint focus:border-brand-500 focus:outline-none ' +
-  'focus:ring-2 focus:ring-brand-500/25 disabled:bg-canvas disabled:text-ink-muted';
+  'focus:ring-2 focus:ring-brand-500/25 disabled:cursor-not-allowed disabled:bg-canvas disabled:text-ink-muted';
 
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   invalid?: boolean;
@@ -78,7 +81,7 @@ export function Input({ className, invalid, numeric, ...props }: InputProps) {
       className={cx(
         INPUT_CLASS,
         'h-11',
-        numeric && 'tnum text-start',
+        numeric && 'tnum',
         invalid && 'border-danger-600 focus:border-danger-600 focus:ring-danger-600/20',
         className,
       )}

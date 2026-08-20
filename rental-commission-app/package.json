@@ -14,7 +14,11 @@
     "db:reset": "bash scripts/setup-db.sh --reset",
     "seed": "node scripts/seed.mjs",
     "seed:fresh": "node scripts/seed.mjs --fresh",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "seed:production": "node scripts/seed.mjs --no-demo --random-passwords",
+    "verify:db": "node scripts/verify-rls.mjs",
+    "qa:shots": "node scripts/qa-shots.mjs",
+    "deploy:supabase": "bash scripts/deploy-supabase.sh"
   },
   "keywords": [],
   "author": "",

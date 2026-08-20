@@ -91,14 +91,14 @@ function InvoiceToggle({
   return (
     <label
       htmlFor={id}
-      className="inline-flex h-11 cursor-pointer select-none items-center gap-2 rounded-lg border border-line-strong bg-surface px-3 text-[14px] text-ink-soft transition-colors hover:border-ink-faint has-checked:border-payable-600/40 has-checked:bg-payable-50 has-checked:text-payable-700"
+      className="inline-flex h-11 cursor-pointer select-none items-center gap-2 rounded-lg border border-line-strong bg-surface px-3 text-[15px] text-ink-soft transition-colors hover:border-ink-faint has-checked:border-payable-600/40 has-checked:bg-payable-50 has-checked:text-payable-700 md:text-[14px]"
     >
       <input
         id={id}
         type="checkbox"
         checked={checked}
         onChange={(event) => onChange(event.target.checked)}
-        className="size-4 accent-[var(--color-payable-600)]"
+        className="size-4 cursor-pointer accent-[var(--color-payable-600)]"
       />
       {label}
     </label>
@@ -125,7 +125,13 @@ export function EntriesTable({
   editable,
 }: {
   entries: ClientEntry[];
-  onEntriesChange: (next: ClientEntry[]) => void;
+  /**
+   * Functional update, deliberately. Add, edit and delete each resolve on
+   * their own server round trip, so two of them can land in either order; an
+   * updater applies to whatever the list actually is at that moment rather
+   * than to the snapshot captured when the request was fired.
+   */
+  onEntriesChange: (updater: (current: ClientEntry[]) => ClientEntry[]) => void;
   period: Period;
   editable: boolean;
 }) {
@@ -189,7 +195,7 @@ export function EntriesTable({
     handleResult(
       result,
       (updated) => {
-        onEntriesChange(entries.map((e) => (e.id === id ? { ...e, ...updated } : e)));
+        onEntriesChange((current) => current.map((e) => (e.id === id ? { ...e, ...updated } : e)));
         setEditingId(null);
         setEditErrors({});
       },
@@ -204,7 +210,7 @@ export function EntriesTable({
     handleResult(
       result,
       () => {
-        onEntriesChange(entries.filter((e) => e.id !== id));
+        onEntriesChange((current) => current.filter((e) => e.id !== id));
         setConfirmDeleteId(null);
       },
       'הדיווח נמחק.',
@@ -223,14 +229,19 @@ export function EntriesTable({
       });
 
       if (result.ok) {
-        onEntriesChange([...entries, result.data]);
+        const created = result.data;
+        // A duplicate arrival (double submit, retried action) must not add the
+        // same row twice.
+        onEntriesChange((current) =>
+          current.some((e) => e.id === created.id) ? current : [...current, created],
+        );
         setStatus({ tone: 'ok', text: 'הנכס נוסף לדיווח.' });
         return true;
       }
       setStatus({ tone: 'error', text: result.error });
       return false;
     },
-    [entries, onEntriesChange, period.month, period.year],
+    [onEntriesChange, period.month, period.year],
   );
 
   return (
@@ -454,7 +465,7 @@ function DesktopTable(props: RowControlProps & { totals: ReturnType<typeof calcu
                       <label className="inline-flex cursor-pointer items-center gap-2 text-[13.5px]">
                         <input
                           type="checkbox"
-                          className="size-4 accent-[var(--color-payable-600)]"
+                          className="size-4 cursor-pointer accent-[var(--color-payable-600)]"
                           checked={draft.hasInvoice}
                           onChange={(e) =>
                             props.onDraftChange({ ...props.editDraft, hasInvoice: e.target.checked })
@@ -566,7 +577,7 @@ function DesktopTable(props: RowControlProps & { totals: ReturnType<typeof calcu
                             type="button"
                             variant="ghost"
                             size="sm"
-                            className="size-9 p-0"
+                            className="size-11 p-0 md:size-9"
                             aria-label={`עריכת ${entry.propertyAddress}`}
                             onClick={() => props.onBeginEdit(entry)}
                           >
@@ -576,7 +587,7 @@ function DesktopTable(props: RowControlProps & { totals: ReturnType<typeof calcu
                             type="button"
                             variant="ghost"
                             size="sm"
-                            className="size-9 p-0 hover:text-danger-600"
+                            className="size-11 p-0 hover:text-danger-600 md:size-9"
                             aria-label={`מחיקת ${entry.propertyAddress}`}
                             onClick={() => props.onAskDelete(entry.id)}
                           >
@@ -728,7 +739,7 @@ function MobileList(props: RowControlProps) {
                       >
                         {preview.payable > 0 ? formatILS(preview.payable) : '—'}
                       </p>
-                      <p className="text-[11.5px] text-ink-faint">עמלה</p>
+                      <p className="text-[11.5px] text-ink-muted">עמלה</p>
                     </div>
                   </div>
 
@@ -930,7 +941,7 @@ function AddRowForm({ onAdd }: { onAdd: (draft: DraftValues) => Promise<boolean>
         </Button>
       </div>
 
-      <p className="mt-2.5 text-[12px] text-ink-faint">
+      <p className="mt-2.5 text-[12px] text-ink-muted">
         לחיצה על Enter מוסיפה את השורה ומחזירה את הסמן לשדה הכתובת.
       </p>
     </div>

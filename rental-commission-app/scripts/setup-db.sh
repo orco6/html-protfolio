@@ -50,6 +50,13 @@ as_super "-c \"alter role app_owner  with password '$OWNER_PW'  bypassrls nosupe
 as_super "-c \"alter role app_client with password '$CLIENT_PW' nobypassrls nosuperuser nocreatedb nocreaterole\""
 as_super "-c \"alter role app_auth   with password '$AUTH_PW'   nobypassrls nosuperuser nocreatedb nocreaterole\""
 
+# Operator resolution: managed providers install extensions into their own
+# schema, so both application roles must be able to see it. Harmless locally —
+# a schema that does not exist is skipped during resolution. Kept next to role
+# creation because altering a role needs rights the migration role lacks.
+as_super "-c \"alter role app_client set search_path = public, app, extensions\""
+as_super "-c \"alter role app_auth   set search_path = public, app, extensions\""
+
 # ----------------------------------------------------------------- database
 if [ "${1:-}" = "--reset" ]; then
   echo "==> dropping database $DB_NAME"

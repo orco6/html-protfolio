@@ -40,7 +40,7 @@ export function PrintHeader({
         <div className="text-end">
           <p className="text-[12px] text-ink-muted">חודש דיווח</p>
           <p className="text-[17px] font-semibold">{periodLabel(period)}</p>
-          <p className="mt-2 text-[11px] text-ink-faint">הופק ב־{printedAt}</p>
+          <p className="mt-2 text-[11px] text-ink-muted">הופק ב־{printedAt}</p>
         </div>
       </div>
     </header>

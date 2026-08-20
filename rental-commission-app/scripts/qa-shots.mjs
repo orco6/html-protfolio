@@ -61,7 +61,20 @@ async function shot(page, name, { full = true, media } = {}) {
   if (media) await page.emulateMedia({ media });
   await page.waitForLoadState('networkidle');
   await page.waitForTimeout(350);
+
+  // A full-page capture is stitched from scroll positions, so a sticky header
+  // gets painted over the middle of the page and hides whatever is behind it.
+  // Pinning it in place for the duration of the shot makes the image an honest
+  // record of the layout rather than an artefact of the capture.
+  const unstick = full
+    ? await page.addStyleTag({ content: '.sticky { position: static !important; }' })
+    : null;
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.waitForTimeout(120);
+
   await page.screenshot({ path: `${OUT}/${name}.png`, fullPage: full });
+
+  if (unstick) await unstick.evaluate((node) => node.remove());
   if (media) await page.emulateMedia({ media: 'screen' });
   console.log(`  captured ${name}.png`);
 }

@@ -88,7 +88,7 @@ export function SummaryStrip({
           <p
             className={cx(
               'text-[11.5px] leading-snug',
-              item.tone === 'payable' ? 'text-payable-700/75' : 'text-ink-faint',
+              item.tone === 'payable' ? 'text-payable-700/80' : 'text-ink-muted',
             )}
           >
             {item.hint}
