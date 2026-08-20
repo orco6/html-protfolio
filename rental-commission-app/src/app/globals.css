@@ -1,0 +1,231 @@
+@import 'tailwindcss';
+
+/* =============================================================================
+   Design tokens
+   -----------------------------------------------------------------------------
+   A restrained, document-like palette: one cool neutral ramp carries almost the
+   whole interface, a single deep blue marks anything interactive, and colour is
+   otherwise reserved for money states (payable / pending / conflict).
+   ============================================================================ */
+
+@theme {
+  --font-sans: var(--font-heebo), 'Segoe UI', system-ui, sans-serif;
+
+  /* neutral ramp — slightly cool, printed-paper feel */
+  --color-canvas: #f4f6f8;
+  --color-surface: #ffffff;
+  --color-surface-sunken: #fafbfc;
+  --color-line: #e4e8ed;
+  --color-line-strong: #ccd4de;
+
+  --color-ink: #0e1620;
+  --color-ink-soft: #3d4b5c;
+  --color-ink-muted: #64748b;
+  --color-ink-faint: #94a3b8;
+
+  /* brand — deep, unsaturated blue. interactive elements only */
+  --color-brand-50: #eef4fa;
+  --color-brand-100: #d8e6f3;
+  --color-brand-200: #b3cce6;
+  --color-brand-500: #2c6ea4;
+  --color-brand-600: #1f5685;
+  --color-brand-700: #17436a;
+  --color-brand-900: #0c2739;
+
+  /* money + state */
+  --color-payable-50: #eaf6f0;
+  --color-payable-600: #0d7748;
+  --color-payable-700: #0a5c38;
+
+  --color-pending-50: #fdf5e7;
+  --color-pending-200: #f2dcae;
+  --color-pending-700: #91620a;
+
+  --color-conflict-50: #fdf0ee;
+  --color-conflict-200: #f6d2cc;
+  --color-conflict-600: #b93815;
+  --color-conflict-700: #93300f;
+
+  --color-danger-50: #fdf1f0;
+  --color-danger-600: #b42318;
+  --color-danger-700: #912018;
+
+  --radius-card: 0.75rem;
+
+  --shadow-card: 0 1px 2px rgb(14 22 32 / 0.05), 0 1px 3px rgb(14 22 32 / 0.04);
+  --shadow-raised: 0 4px 6px -2px rgb(14 22 32 / 0.05), 0 12px 24px -8px rgb(14 22 32 / 0.12);
+  --shadow-overlay: 0 24px 48px -12px rgb(14 22 32 / 0.24);
+}
+
+/* =============================================================================
+   Base
+   ============================================================================ */
+
+@layer base {
+  * {
+    border-color: var(--color-line);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-feature-settings: 'tnum' 0;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Headings stay tight and quiet; hierarchy comes from size and weight only. */
+  h1, h2, h3, h4 {
+    font-weight: 600;
+    letter-spacing: -0.011em;
+    color: var(--color-ink);
+  }
+
+  /* Every focus ring is visible and consistent — this is a keyboard-heavy app. */
+  :focus-visible {
+    outline: 2px solid var(--color-brand-500);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  ::selection {
+    background: var(--color-brand-100);
+  }
+
+  input[type='number'] {
+    -moz-appearance: textfield;
+  }
+  input[type='number']::-webkit-outer-spin-button,
+  input[type='number']::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+}
+
+/* =============================================================================
+   Utilities
+   ============================================================================ */
+
+@utility tnum {
+  /* Tabular, LTR digits inside an RTL document: currency columns must align
+     and must never be reordered by the bidi algorithm. */
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+  direction: ltr;
+  unicode-bidi: isolate;
+  text-align: inherit;
+}
+
+@utility card {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+
+/* A hairline that reads correctly whichever way the document flows. */
+@utility divide-line {
+  border-block-start: 1px solid var(--color-line);
+}
+
+/* =============================================================================
+   Motion — subtle, short, and fully disabled for reduced-motion users.
+   Nothing here may delay a keystroke or a row commit.
+   ============================================================================ */
+
+@keyframes rc-fade-up {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes rc-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.animate-fade-up {
+  animation: rc-fade-up 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-fade-in {
+  animation: rc-fade-in 140ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* =============================================================================
+   Print — the report is a real document, not a screenshot of an app.
+   ============================================================================ */
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 14mm 12mm 16mm;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-size: 10.5pt;
+  }
+
+  .no-print,
+  nav,
+  button:not(.print-keep),
+  [data-print='hide'] {
+    display: none !important;
+  }
+
+  .print-only {
+    display: revert !important;
+  }
+
+  .card,
+  [data-print='plain'] {
+    box-shadow: none !important;
+    border-color: #c9ced6 !important;
+    border-radius: 0 !important;
+  }
+
+  main {
+    padding: 0 !important;
+    max-width: none !important;
+  }
+
+  table {
+    page-break-inside: auto;
+  }
+  tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+  thead {
+    display: table-header-group;
+  }
+  tfoot {
+    display: table-footer-group;
+  }
+
+  a[href]::after {
+    content: '';
+  }
+}
+
+.print-only {
+  display: none;
+}
